@@ -22,7 +22,7 @@ func main() {
 	flag.Parse()
 
 	http.HandleFunc("/samples/", func(w http.ResponseWriter, r *http.Request) {
-		var data []interface{}
+		var data map[string]interface{}
 		defer r.Body.Close()
 
 		if r.Method != "POST" {

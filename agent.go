@@ -1,14 +1,14 @@
 package main
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/machinebox/graphql"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -16,7 +16,7 @@ var (
 	port     int
 	server   string
 	cacheLen int
-	client   *graphql.Client
+	client   *http.Client
 )
 
 func init() {
@@ -24,11 +24,32 @@ func init() {
 	flag.IntVar(&port, "port", 8000, "Port to listen on")
 	flag.IntVar(&cacheLen, "cache", 100, "Number requests to cache before sending samples")
 	flag.StringVar(&server, "server", "https://api.mindsight.io", "URL of API server")
+	client = &http.Client{}
 }
 
 type hotpathSample struct {
 	FnName string
 	NCalls int
+}
+
+type graphqlRequest struct {
+	Query     string                 `json:"query"`
+	Variables map[string]interface{} `json:"variables"`
+}
+
+type graphqlErrLoc struct {
+	Line   int `json:"line"`
+	Column int `json:"column"`
+}
+
+type graphqlError struct {
+	Message   string          `json:"message"`
+	Locations []graphqlErrLoc `json:"locations"`
+}
+
+type graphqlResponse struct {
+	Data   json.RawMessage `json:"data"`
+	Errors []graphqlError  `json:"errors"`
 }
 
 var mutation string = `
@@ -39,23 +60,57 @@ mutation ($samples: [HotpathSample!]!) {
 
 func sendSamples(samples map[string]int) error {
 	var (
-		response int
-		params   []hotpathSample
+		gqlResp graphqlResponse
+		params  []hotpathSample
 	)
 
 	for name, count := range samples {
 		params = append(params, hotpathSample{name, count})
 	}
 
-	req := graphql.NewRequest(mutation)
-	req.Var("samples", params)
-	return client.Run(context.Background(), req, &response)
+	gql := graphqlRequest{
+		Query: mutation,
+		Variables: map[string]interface{}{
+			"samples": params,
+		},
+	}
+
+	payload, err := json.Marshal(gql)
+	if err != nil {
+		return errors.Wrap(err, "json-marshal graphql request payload")
+	}
+
+	req, err := http.NewRequest("POST", server, bytes.NewBuffer(payload))
+	if err != nil {
+		return errors.Wrap(err, "create new request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return errors.Wrap(err, "do http request")
+	}
+	defer resp.Body.Close()
+
+	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+		return errors.Wrap(err, "decode gql response body")
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		return errors.New("graphql error: " + gqlResp.Errors[0].Message)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return errors.New("bad http status code: " + resp.Status)
+	}
+
+	return nil
 }
 
 func main() {
 	flag.Parse()
 
-	client = graphql.NewClient(server)
 	samples := make(map[string]int)
 	count := 0
 

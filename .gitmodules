@@ -1,6 +1,3 @@
-[submodule "vendor/github.com/machinebox/graphql"]
-	path = vendor/github.com/machinebox/graphql
-	url = https://github.com/machinebox/graphql.git
 [submodule "vendor/github.com/pkg/errors"]
 	path = vendor/github.com/pkg/errors
 	url = https://github.com/pkg/errors.git

@@ -133,7 +133,7 @@ func main() {
 			samples[name] += ncalls
 		}
 
-		log.Println(samples)
+		log.Println(count, samples)
 
 		count += 1
 		if count > cacheLen {
@@ -141,6 +141,7 @@ func main() {
 				log.Println(err)
 			} else {
 				samples = make(map[string]int)
+				count = 0
 			}
 		}
 

@@ -28,8 +28,8 @@ func init() {
 }
 
 type hotpathSample struct {
-	FnName string
-	NCalls int
+	FnName string `json:"fnName"`
+	NCalls int    `json:"nCalls"`
 }
 
 type graphqlRequest struct {

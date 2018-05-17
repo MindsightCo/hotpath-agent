@@ -12,6 +12,8 @@ import (
 	"github.com/onsi/gomega/format"
 )
 
+var testGrantResponse = `{"access_token":"open-sesame","scope":"u-cant-touch-dis","expires_in":1,"token_type":"Bearer"}`
+
 var testGrant = auth0Grant{
 	AccessToken: "open-sesame",
 	Scope:       "u-cant-touch-dis",
@@ -39,9 +41,7 @@ func testGetAccessToken() (http.HandlerFunc, *int) {
 		r.Body.Close()
 		Expect(request).To(Equal(testCredRequest))
 
-		resp, err := json.Marshal(testGrant)
-		Expect(err).To(BeNil())
-		_, err = w.Write(resp)
+		_, err := w.Write([]byte(testGrantResponse))
 		Expect(err).To(BeNil())
 
 		ncalls++

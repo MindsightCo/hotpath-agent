@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -74,10 +75,17 @@ func (g *grantRequest) renewGrant() error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return errors.Errorf("response status: %s, body: %s", resp.Status, string(body))
+	}
+
 	var grant auth0Grant
 	if err := json.NewDecoder(resp.Body).Decode(&grant); err != nil {
 		return errors.Wrap(err, "decode grant from response")
 	}
+
+	grant.ExpiresIn *= time.Second
 
 	g.issuedAt = g.nowFn()
 	g.grant = &grant

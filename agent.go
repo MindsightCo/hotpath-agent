@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +21,8 @@ var (
 	cacheLen int
 	client   *http.Client
 )
+
+const CREDS_AUDIENCE = "https://api.mindsight.io/"
 
 func init() {
 	flag.StringVar(&host, "host", "", "Address to bind server to")
@@ -101,16 +104,17 @@ func sendSamples(samples map[string]int, grant auth.Grant) error {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		body, _ := ioutil.ReadAll(resp.Body)
+		return errors.Errorf("response status: %s, body: %s", resp.Status, string(body))
+	}
+
 	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
 		return errors.Wrap(err, "decode gql response body")
 	}
 
 	if len(gqlResp.Errors) > 0 {
 		return errors.New("graphql error: " + gqlResp.Errors[0].Message)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return errors.New("bad http status code: " + resp.Status)
 	}
 
 	return nil
@@ -122,7 +126,7 @@ func main() {
 	credRequest := &auth.CredentialsRequest{
 		ClientID:     os.Getenv("MINDSIGHT_CLIENT_ID"),
 		ClientSecret: os.Getenv("MINDSIGHT_CLIENT_SECRET"),
-		Audience:     server,
+		Audience:     CREDS_AUDIENCE,
 		GrantType:    auth.CLIENT_CREDS_GRANT_TYPE,
 	}
 

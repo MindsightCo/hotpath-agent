@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
+	"github.com/MindsightCo/hotpath-agent/auth"
 	"github.com/pkg/errors"
 )
 
@@ -23,7 +25,7 @@ func init() {
 	flag.StringVar(&host, "host", "", "Address to bind server to")
 	flag.IntVar(&port, "port", 8000, "Port to listen on")
 	flag.IntVar(&cacheLen, "cache", 100, "Number requests to cache before sending samples")
-	flag.StringVar(&server, "server", "https://api.mindsight.io", "URL of API server")
+	flag.StringVar(&server, "server", "https://api.mindsight.io/", "URL of API server")
 	client = &http.Client{}
 }
 
@@ -58,11 +60,16 @@ mutation ($samples: [HotpathSample!]!) {
 }
 `
 
-func sendSamples(samples map[string]int) error {
+func sendSamples(samples map[string]int, grant auth.Grant) error {
 	var (
 		gqlResp graphqlResponse
 		params  []hotpathSample
 	)
+
+	accessToken, err := grant.GetAccessToken()
+	if err != nil {
+		return errors.Wrap(err, "get API access token")
+	}
 
 	for name, count := range samples {
 		params = append(params, hotpathSample{name, count})
@@ -86,6 +93,7 @@ func sendSamples(samples map[string]int) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "bearer "+accessToken)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -110,6 +118,15 @@ func sendSamples(samples map[string]int) error {
 
 func main() {
 	flag.Parse()
+
+	credRequest := &auth.CredentialsRequest{
+		ClientID:     os.Getenv("MINDSIGHT_CLIENT_ID"),
+		ClientSecret: os.Getenv("MINDSIGHT_CLIENT_SECRET"),
+		Audience:     server,
+		GrantType:    auth.CLIENT_CREDS_GRANT_TYPE,
+	}
+
+	grant := auth.NewGrant(auth.AUTH0_TOKEN_URL, credRequest, nil)
 
 	samples := make(map[string]int)
 	count := 0
@@ -137,7 +154,7 @@ func main() {
 
 		count += 1
 		if count > cacheLen {
-			if err := sendSamples(samples); err != nil {
+			if err := sendSamples(samples, grant); err != nil {
 				log.Println(err)
 			} else {
 				samples = make(map[string]int)

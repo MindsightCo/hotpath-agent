@@ -19,6 +19,7 @@ var (
 	port     int
 	server   string
 	cacheLen int
+	testMode bool
 	client   *http.Client
 )
 
@@ -29,6 +30,7 @@ func init() {
 	flag.IntVar(&port, "port", 8000, "Port to listen on")
 	flag.IntVar(&cacheLen, "cache", 100, "Number requests to cache before sending samples")
 	flag.StringVar(&server, "server", "https://api.mindsight.io/", "URL of API server")
+	flag.BoolVar(&testMode, "test", false, "Enable test mode, does not attempt to send data")
 	client = &http.Client{}
 }
 
@@ -120,6 +122,16 @@ func sendSamples(samples map[string]int, grant auth.Grant) error {
 	return nil
 }
 
+func printSamples(samples map[string]int) error {
+	prettyPrint, err := json.MarshalIndent(samples, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "failed to format samples to json")
+	}
+
+	log.Println("TESTMODE | Samples accumulated thus far (not sending to server):", string(prettyPrint))
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
@@ -130,7 +142,11 @@ func main() {
 		GrantType:    auth.CLIENT_CREDS_GRANT_TYPE,
 	}
 
-	grant := auth.NewGrant(auth.AUTH0_TOKEN_URL, credRequest, nil)
+	var grant auth.Grant
+
+	if !testMode {
+		grant = auth.NewGrant(auth.AUTH0_TOKEN_URL, credRequest, nil)
+	}
 
 	samples := make(map[string]int)
 	count := 0
@@ -158,7 +174,15 @@ func main() {
 
 		count += 1
 		if count > cacheLen {
-			if err := sendSamples(samples, grant); err != nil {
+			var err error
+
+			if testMode {
+				err = printSamples(samples)
+			} else {
+				err = sendSamples(samples, grant)
+			}
+
+			if err != nil {
 				log.Println(err)
 			} else {
 				samples = make(map[string]int)

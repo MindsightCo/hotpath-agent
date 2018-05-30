@@ -2,6 +2,10 @@
 
 This application will collect any data from your application that Mindsight is measuring, and send it securely to Mindsight's API for further processing and display on our dashboard.
 
+## Download
+
+You can download the latest Mindsight Reporting Agent (just a single Linux binary) from our [release page](https://github.com/MindsightCo/hotpath-agent/releases/latest). You can also build the code in this repository if you have a Go development environment setup, but that may have some unreleased changes that aren't ready for production use. **We recommend you download our latest release for production use.**
+
 ## Authentication
 
 The following environment variables must be set to properly authenticate with Mindsight's API:

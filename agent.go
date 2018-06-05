@@ -23,13 +23,16 @@ var (
 	client   *http.Client
 )
 
-const CREDS_AUDIENCE = "https://api.mindsight.io/"
+const (
+	CREDS_AUDIENCE     = "https://api.mindsight.io/"
+	DEFAULT_API_SERVER = "https://api.mindsight.io/query"
+)
 
 func init() {
 	flag.StringVar(&host, "host", "", "Address to bind server to")
 	flag.IntVar(&port, "port", 8000, "Port to listen on")
 	flag.IntVar(&cacheLen, "cache", 100, "Number requests to cache before sending samples")
-	flag.StringVar(&server, "server", "https://api.mindsight.io/", "URL of API server")
+	flag.StringVar(&server, "server", DEFAULT_API_SERVER, "URL of API server")
 	flag.BoolVar(&testMode, "test", false, "Enable test mode, does not attempt to send data")
 	client = &http.Client{}
 }

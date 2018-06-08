@@ -135,8 +135,10 @@ func printSamples(samples map[string]int) error {
 	return nil
 }
 
-func main() {
-	flag.Parse()
+func initGrant(testMode bool) (auth.Grant, error) {
+	if testMode {
+		return nil, nil
+	}
 
 	credRequest := &auth.CredentialsRequest{
 		ClientID:     os.Getenv("MINDSIGHT_CLIENT_ID"),
@@ -145,11 +147,30 @@ func main() {
 		GrantType:    auth.CLIENT_CREDS_GRANT_TYPE,
 	}
 
-	var grant auth.Grant
-
-	if !testMode {
-		grant = auth.NewGrant(auth.AUTH0_TOKEN_URL, credRequest, nil)
+	if credRequest.ClientID == "" || credRequest.ClientSecret == "" {
+		return nil, errors.New("Must supply env variables MINDSIGHT_CLIENT_ID and MINDSIGHT_CLIENT_SECRET")
 	}
+
+	grant := auth.NewGrant(auth.AUTH0_TOKEN_URL, credRequest, nil)
+
+	// test the token
+	if _, err := grant.GetAccessToken(); err != nil {
+		return nil, errors.Wrap(err, "testing credentials")
+	}
+
+	return grant, nil
+}
+
+func main() {
+	flag.Parse()
+
+	grant, err := initGrant(testMode)
+	if err != nil {
+		err = errors.Wrap(err, "Mindsight agent: fail init grant")
+		log.Fatal(err)
+	}
+
+	log.Println("Starting Mindsight agent...")
 
 	samples := make(map[string]int)
 	count := 0

@@ -31,7 +31,7 @@ const (
 func init() {
 	flag.StringVar(&host, "host", "", "Address to bind server to")
 	flag.IntVar(&port, "port", 8000, "Port to listen on")
-	flag.IntVar(&cacheLen, "cache", 100, "Number requests to cache before sending samples")
+	flag.IntVar(&cacheLen, "cache", 5, "Number requests to cache before sending samples")
 	flag.StringVar(&server, "server", DEFAULT_API_SERVER, "URL of API server")
 	flag.BoolVar(&testMode, "test", false, "Enable test mode, does not attempt to send data")
 	client = &http.Client{}

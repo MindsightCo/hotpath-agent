@@ -37,6 +37,12 @@ func init() {
 	client = &http.Client{}
 }
 
+type dataSample struct {
+	ProjectName string          `json:"projectName"`
+	Environment string          `json:"environment"`
+	Hotpaths    []hotpathSample `json:"hotpaths"`
+}
+
 type hotpathSample struct {
 	FnName string `json:"fnName"`
 	NCalls int    `json:"nCalls"`
@@ -63,16 +69,18 @@ type graphqlResponse struct {
 }
 
 var mutation string = `
-mutation ($samples: [HotpathSample!]!) {
-	addHotpath(hotpaths: $samples)
+mutation ($sample: DataSample!) {
+	collectData(sample: $sample)
 }
 `
 
-func sendSamples(samples map[string]int, grant auth.Grant) error {
+func sendSamples(projectName, environment string, samples map[string]int, grant auth.Grant) error {
 	var (
-		gqlResp graphqlResponse
-		params  []hotpathSample
+		gqlResp  graphqlResponse
+		hotpaths []hotpathSample
 	)
+
+	sample := dataSample{ProjectName: projectName, Environment: environment}
 
 	accessToken, err := grant.GetAccessToken()
 	if err != nil {
@@ -80,13 +88,15 @@ func sendSamples(samples map[string]int, grant auth.Grant) error {
 	}
 
 	for name, count := range samples {
-		params = append(params, hotpathSample{name, count})
+		hotpaths = append(hotpaths, hotpathSample{name, count})
 	}
+
+	sample.Hotpaths = hotpaths
 
 	gql := graphqlRequest{
 		Query: mutation,
 		Variables: map[string]interface{}{
-			"samples": params,
+			"sample": sample,
 		},
 	}
 
@@ -179,6 +189,15 @@ func main() {
 		var data map[string]int
 		defer r.Body.Close()
 
+		query := r.URL.Query()
+		projectName := query.Get("project")
+		environment := query.Get("environment")
+
+		if projectName == "" {
+			http.Error(w, "must specify ``project'' query parameter", http.StatusBadRequest)
+			return
+		}
+
 		if r.Method != "POST" {
 			http.Error(w, "only POST allowed for /samples/", http.StatusNotFound)
 			return
@@ -203,7 +222,7 @@ func main() {
 			if testMode {
 				err = printSamples(samples)
 			} else {
-				err = sendSamples(samples, grant)
+				err = sendSamples(projectName, environment, samples, grant)
 			}
 
 			if err != nil {

@@ -125,7 +125,8 @@ func sendSamples(projectName, environment string, samples map[string]int, grant 
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
-		return errors.Wrap(err, "decode gql response body")
+		body, _ := ioutil.ReadAll(resp.Body)
+		return errors.Wrapf(err, "decode gql, response body: %s", string(body))
 	}
 
 	if len(gqlResp.Errors) > 0 {

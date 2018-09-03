@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"sync"
 
 	"github.com/MindsightCo/hotpath-agent/auth"
 	"github.com/pkg/errors"
@@ -74,11 +75,62 @@ mutation ($sample: DataSample!) {
 }
 `
 
-func sendSamples(projectName, environment string, samples map[string]int, grant auth.Grant) error {
-	var (
-		gqlResp  graphqlResponse
-		hotpaths []hotpathSample
-	)
+type rawSamples struct {
+	mutex   *sync.RWMutex
+	samples map[string]int
+}
+
+func NewRawSamples() *rawSamples {
+	return &rawSamples{
+		mutex:   new(sync.RWMutex),
+		samples: make(map[string]int),
+	}
+}
+
+func (s *rawSamples) Set(data map[string]int) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for name, ncalls := range data {
+		s.samples[name] += ncalls
+	}
+}
+
+func (s *rawSamples) GetAll() []hotpathSample {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	var hotpaths []hotpathSample
+
+	for name, count := range s.samples {
+		hotpaths = append(hotpaths, hotpathSample{name, count})
+	}
+
+	return hotpaths
+}
+
+func (s *rawSamples) Print() error {
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
+
+	prettyPrint, err := json.MarshalIndent(s.samples, "", "  ")
+	if err != nil {
+		return errors.Wrap(err, "failed to format samples to json")
+	}
+
+	log.Println("TESTMODE | Samples accumulated thus far (not sending to server):", string(prettyPrint))
+	return nil
+}
+
+func (s *rawSamples) Clear() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	s.samples = make(map[string]int)
+}
+
+func sendSamples(projectName, environment string, samples *rawSamples, grant auth.Grant) error {
+	var gqlResp graphqlResponse
 
 	sample := dataSample{ProjectName: projectName, Environment: environment}
 
@@ -87,11 +139,7 @@ func sendSamples(projectName, environment string, samples map[string]int, grant 
 		return errors.Wrap(err, "get API access token")
 	}
 
-	for name, count := range samples {
-		hotpaths = append(hotpaths, hotpathSample{name, count})
-	}
-
-	sample.Hotpaths = hotpaths
+	sample.Hotpaths = samples.GetAll()
 
 	gql := graphqlRequest{
 		Query: mutation,
@@ -136,16 +184,6 @@ func sendSamples(projectName, environment string, samples map[string]int, grant 
 	return nil
 }
 
-func printSamples(samples map[string]int) error {
-	prettyPrint, err := json.MarshalIndent(samples, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "failed to format samples to json")
-	}
-
-	log.Println("TESTMODE | Samples accumulated thus far (not sending to server):", string(prettyPrint))
-	return nil
-}
-
 func initGrant(testMode bool) (auth.Grant, error) {
 	if testMode {
 		return nil, nil
@@ -183,7 +221,7 @@ func main() {
 
 	log.Println("Starting Mindsight agent...")
 
-	samples := make(map[string]int)
+	samples := NewRawSamples()
 	count := 0
 
 	http.HandleFunc("/samples/", func(w http.ResponseWriter, r *http.Request) {
@@ -210,18 +248,16 @@ func main() {
 			return
 		}
 
-		for name, ncalls := range data {
-			samples[name] += ncalls
-		}
+		samples.Set(data)
 
-		log.Println(count, samples)
+		log.Println(count, samples.samples)
 
 		count += 1
 		if count > cacheLen {
 			var err error
 
 			if testMode {
-				err = printSamples(samples)
+				err = samples.Print()
 			} else {
 				err = sendSamples(projectName, environment, samples, grant)
 			}
@@ -229,7 +265,7 @@ func main() {
 			if err != nil {
 				log.Println(err)
 			} else {
-				samples = make(map[string]int)
+				samples.Clear()
 				count = 0
 			}
 		}

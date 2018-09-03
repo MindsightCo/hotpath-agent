@@ -7,9 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
 
 	"github.com/MindsightCo/hotpath-agent/msclient"
+	"github.com/MindsightCo/hotpath-agent/samplecache"
 	"github.com/ereyes01/go-auth0-grant"
 	"github.com/pkg/errors"
 )
@@ -39,14 +39,9 @@ func init() {
 }
 
 type dataSample struct {
-	ProjectName string          `json:"projectName"`
-	Environment string          `json:"environment"`
-	Hotpaths    []hotpathSample `json:"hotpaths"`
-}
-
-type hotpathSample struct {
-	FnName string `json:"fnName"`
-	NCalls int    `json:"nCalls"`
+	ProjectName string                      `json:"projectName"`
+	Environment string                      `json:"environment"`
+	Hotpaths    []samplecache.HotpathSample `json:"hotpaths"`
 }
 
 var mutation string = `
@@ -55,61 +50,7 @@ mutation ($sample: DataSample!) {
 }
 `
 
-type rawSamples struct {
-	mutex   *sync.RWMutex
-	samples map[string]int
-}
-
-func NewRawSamples() *rawSamples {
-	return &rawSamples{
-		mutex:   new(sync.RWMutex),
-		samples: make(map[string]int),
-	}
-}
-
-func (s *rawSamples) Set(data map[string]int) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	for name, ncalls := range data {
-		s.samples[name] += ncalls
-	}
-}
-
-func (s *rawSamples) GetAll() []hotpathSample {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	var hotpaths []hotpathSample
-
-	for name, count := range s.samples {
-		hotpaths = append(hotpaths, hotpathSample{name, count})
-	}
-
-	return hotpaths
-}
-
-func (s *rawSamples) Print() error {
-	s.mutex.RLock()
-	defer s.mutex.RUnlock()
-
-	prettyPrint, err := json.MarshalIndent(s.samples, "", "  ")
-	if err != nil {
-		return errors.Wrap(err, "failed to format samples to json")
-	}
-
-	log.Println("TESTMODE | Samples accumulated thus far (not sending to server):", string(prettyPrint))
-	return nil
-}
-
-func (s *rawSamples) Clear() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.samples = make(map[string]int)
-}
-
-func sendSamples(projectName, environment string, samples *rawSamples, grant auth0grant.Grant) error {
+func sendSamples(projectName, environment string, samples *samplecache.RawSamples, grant auth0grant.Grant) error {
 	sample := dataSample{ProjectName: projectName, Environment: environment}
 
 	sample.Hotpaths = samples.GetAll()
@@ -165,7 +106,7 @@ func main() {
 
 	log.Println("Starting Mindsight agent...")
 
-	samples := NewRawSamples()
+	samples := samplecache.NewRawSamples()
 	count := 0
 
 	http.HandleFunc("/samples/", func(w http.ResponseWriter, r *http.Request) {
@@ -194,14 +135,12 @@ func main() {
 
 		samples.Set(data)
 
-		log.Println(count, samples.samples)
-
 		count += 1
 		if count > cacheLen {
 			var err error
 
 			if testMode {
-				err = samples.Print()
+				err = samples.Dump()
 			} else {
 				err = sendSamples(projectName, environment, samples, grant)
 			}

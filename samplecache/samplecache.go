@@ -8,40 +8,86 @@ import (
 	"github.com/pkg/errors"
 )
 
-type HotpathSample struct {
+type Hotpath struct {
 	FnName string `json:"fnName"`
 	NCalls int    `json:"nCalls"`
 }
 
+type HotpathSample struct {
+	ProjectName string    `json:"projectName"`
+	Environment string    `json:"environment,omitempty"`
+	Hotpaths    []Hotpath `json:"hotpaths"`
+}
+
+type sampleKey struct {
+	fn      string
+	project string
+	env     string
+}
+
 type RawSamples struct {
 	mutex   *sync.RWMutex
-	samples map[string]int
+	samples map[sampleKey]int
 }
 
 func NewRawSamples() *RawSamples {
 	return &RawSamples{
 		mutex:   new(sync.RWMutex),
-		samples: make(map[string]int),
+		samples: make(map[sampleKey]int),
 	}
 }
 
-func (s *RawSamples) Set(data map[string]int) {
+func (s *RawSamples) Set(data map[string]int, project, environment string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
 	for name, ncalls := range data {
-		s.samples[name] += ncalls
+		key := sampleKey{
+			project: project,
+			env:     environment,
+			fn:      name,
+		}
+		s.samples[key] += ncalls
 	}
+
+	log.Println(data)
 }
 
-func (s *RawSamples) GetAll() []HotpathSample {
+type projectEnvKey struct {
+	project string
+	env     string
+}
+
+func (s *RawSamples) groupByProjectEnv() map[projectEnvKey]*HotpathSample {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 
-	var hotpaths []HotpathSample
+	perProjectEnv := make(map[projectEnvKey]*HotpathSample)
 
-	for name, count := range s.samples {
-		hotpaths = append(hotpaths, HotpathSample{name, count})
+	for key, count := range s.samples {
+		peKey := projectEnvKey{project: key.project, env: key.env}
+
+		if _, present := perProjectEnv[peKey]; !present {
+			perProjectEnv[peKey] = &HotpathSample{
+				ProjectName: peKey.project,
+				Environment: peKey.env,
+			}
+		}
+
+		s := perProjectEnv[peKey]
+		s.Hotpaths = append(s.Hotpaths, Hotpath{FnName: key.fn, NCalls: count})
+	}
+
+	return perProjectEnv
+}
+
+func (s *RawSamples) GetAll() []*HotpathSample {
+	perProjectEnv := s.groupByProjectEnv()
+
+	var hotpaths []*HotpathSample
+
+	for _, h := range perProjectEnv {
+		hotpaths = append(hotpaths, h)
 	}
 
 	return hotpaths
@@ -64,5 +110,5 @@ func (s *RawSamples) Clear() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	s.samples = make(map[string]int)
+	s.samples = make(map[sampleKey]int)
 }

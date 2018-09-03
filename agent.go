@@ -38,27 +38,17 @@ func init() {
 	client = &http.Client{}
 }
 
-type dataSample struct {
-	ProjectName string                      `json:"projectName"`
-	Environment string                      `json:"environment"`
-	Hotpaths    []samplecache.HotpathSample `json:"hotpaths"`
-}
-
 var mutation string = `
 mutation ($sample: DataSample!) {
 	collectData(sample: $sample)
 }
 `
 
-func sendSamples(projectName, environment string, samples *samplecache.RawSamples, grant auth0grant.Grant) error {
-	sample := dataSample{ProjectName: projectName, Environment: environment}
-
-	sample.Hotpaths = samples.GetAll()
-
+func sendSamples(samples *samplecache.HotpathSample, grant auth0grant.Grant) error {
 	gql := msclient.GraphqlRequest{
 		Query: mutation,
 		Variables: map[string]interface{}{
-			"sample": sample,
+			"sample": samples,
 		},
 	}
 
@@ -133,24 +123,30 @@ func main() {
 			return
 		}
 
-		samples.Set(data)
-
+		samples.Set(data, projectName, environment)
 		count += 1
+
 		if count > cacheLen {
-			var err error
+			payloads := samples.GetAll()
 
 			if testMode {
-				err = samples.Dump()
-			} else {
-				err = sendSamples(projectName, environment, samples, grant)
+				if err := samples.Dump(); err != nil {
+					log.Println(err)
+					w.WriteHeader(http.StatusCreated)
+					return
+				}
 			}
 
-			if err != nil {
-				log.Println(err)
-			} else {
-				samples.Clear()
-				count = 0
+			for _, payload := range payloads {
+				if err := sendSamples(payload, grant); err != nil {
+					log.Println(err)
+					w.WriteHeader(http.StatusCreated)
+					return
+				}
 			}
+
+			samples.Clear()
+			count = 0
 		}
 
 		w.WriteHeader(http.StatusCreated)

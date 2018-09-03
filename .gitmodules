@@ -16,3 +16,6 @@
 [submodule "vendor/gopkg.in/yaml.v2"]
 	path = vendor/gopkg.in/yaml.v2
 	url = https://github.com/go-yaml/yaml
+[submodule "vendor/github.com/ereyes01/go-auth0-grant"]
+	path = vendor/github.com/ereyes01/go-auth0-grant
+	url = https://github.com/ereyes01/go-auth0-grant.git

@@ -1,17 +1,16 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"sync"
 
-	"github.com/MindsightCo/hotpath-agent/auth"
+	"github.com/MindsightCo/hotpath-agent/msclient"
+	"github.com/ereyes01/go-auth0-grant"
 	"github.com/pkg/errors"
 )
 
@@ -27,6 +26,7 @@ var (
 const (
 	CREDS_AUDIENCE     = "https://api.mindsight.io/"
 	DEFAULT_API_SERVER = "https://api.mindsight.io/query"
+	AUTH0_TOKEN_URL    = "https://mindsight.auth0.com/oauth/token/"
 )
 
 func init() {
@@ -47,26 +47,6 @@ type dataSample struct {
 type hotpathSample struct {
 	FnName string `json:"fnName"`
 	NCalls int    `json:"nCalls"`
-}
-
-type graphqlRequest struct {
-	Query     string                 `json:"query"`
-	Variables map[string]interface{} `json:"variables"`
-}
-
-type graphqlErrLoc struct {
-	Line   int `json:"line"`
-	Column int `json:"column"`
-}
-
-type graphqlError struct {
-	Message   string          `json:"message"`
-	Locations []graphqlErrLoc `json:"locations"`
-}
-
-type graphqlResponse struct {
-	Data   json.RawMessage `json:"data"`
-	Errors []graphqlError  `json:"errors"`
 }
 
 var mutation string = `
@@ -129,78 +109,42 @@ func (s *rawSamples) Clear() {
 	s.samples = make(map[string]int)
 }
 
-func sendSamples(projectName, environment string, samples *rawSamples, grant auth.Grant) error {
-	var gqlResp graphqlResponse
-
+func sendSamples(projectName, environment string, samples *rawSamples, grant auth0grant.Grant) error {
 	sample := dataSample{ProjectName: projectName, Environment: environment}
-
-	accessToken, err := grant.GetAccessToken()
-	if err != nil {
-		return errors.Wrap(err, "get API access token")
-	}
 
 	sample.Hotpaths = samples.GetAll()
 
-	gql := graphqlRequest{
+	gql := msclient.GraphqlRequest{
 		Query: mutation,
 		Variables: map[string]interface{}{
 			"sample": sample,
 		},
 	}
 
-	payload, err := json.Marshal(gql)
-	if err != nil {
-		return errors.Wrap(err, "json-marshal graphql request payload")
-	}
-
-	req, err := http.NewRequest("POST", server, bytes.NewBuffer(payload))
-	if err != nil {
-		return errors.Wrap(err, "create new request")
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "bearer "+accessToken)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return errors.Wrap(err, "do http request")
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return errors.Errorf("response status: %s, body: %s", resp.Status, string(body))
-	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
-		body, _ := ioutil.ReadAll(resp.Body)
-		return errors.Wrapf(err, "decode gql, response body: %s", string(body))
-	}
-
-	if len(gqlResp.Errors) > 0 {
-		return errors.New("graphql error: " + gqlResp.Errors[0].Message)
+	if _, err := msclient.APIRequest(server, &gql, grant); err != nil {
+		return errors.Wrap(err, "send hotpath samples")
 	}
 
 	return nil
 }
 
-func initGrant(testMode bool) (auth.Grant, error) {
+func initGrant(testMode bool) (auth0grant.Grant, error) {
 	if testMode {
 		return nil, nil
 	}
 
-	credRequest := &auth.CredentialsRequest{
+	credRequest := &auth0grant.CredentialsRequest{
 		ClientID:     os.Getenv("MINDSIGHT_CLIENT_ID"),
 		ClientSecret: os.Getenv("MINDSIGHT_CLIENT_SECRET"),
 		Audience:     CREDS_AUDIENCE,
-		GrantType:    auth.CLIENT_CREDS_GRANT_TYPE,
+		GrantType:    auth0grant.CLIENT_CREDS_GRANT_TYPE,
 	}
 
 	if credRequest.ClientID == "" || credRequest.ClientSecret == "" {
 		return nil, errors.New("Must supply env variables MINDSIGHT_CLIENT_ID and MINDSIGHT_CLIENT_SECRET")
 	}
 
-	grant := auth.NewGrant(auth.AUTH0_TOKEN_URL, credRequest, nil)
+	grant := auth0grant.NewGrant(AUTH0_TOKEN_URL, credRequest)
 
 	// test the token
 	if _, err := grant.GetAccessToken(); err != nil {

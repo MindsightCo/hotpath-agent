@@ -1,4 +1,4 @@
-FROM golang:alpine
+FROM golang
 WORKDIR /go/src/github.com/MindsightCo/hotpath-agent
 COPY . .
 

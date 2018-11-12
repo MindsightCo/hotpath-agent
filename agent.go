@@ -153,5 +153,6 @@ func main() {
 	})
 
 	bind := fmt.Sprintf("%s:%d", host, port)
+	log.Printf("Listening for data, binding to %s ...", bind)
 	log.Fatal(http.ListenAndServe(bind, nil))
 }

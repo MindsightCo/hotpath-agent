@@ -152,6 +152,10 @@ func main() {
 		w.WriteHeader(http.StatusCreated)
 	})
 
+	if server != DEFAULT_API_SERVER {
+		log.Printf("Using API Server: %s", server)
+	}
+
 	bind := fmt.Sprintf("%s:%d", host, port)
 	log.Printf("Listening for data, binding to %s ...", bind)
 	log.Fatal(http.ListenAndServe(bind, nil))

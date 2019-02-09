@@ -17,5 +17,6 @@ EXPOSE 8000
 
 ENV MINDSIGHT_CLIENT_ID=change-me
 ENV MINDSIGHT_CLIENT_SECRET=change-me
+ENV PROTOCOL=http
 
 CMD ./hotpath-agent ${API:+-server ${PROTOCOL}://${API}/query}

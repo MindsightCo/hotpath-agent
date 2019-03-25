@@ -1,0 +1,4 @@
+github.com/ereyes01/go-auth0-grant v0.0.0-20180728073501-2846de29fbc5 h1:SonrpXVFxqteTadBwaStGhgtOCix2ovB+2y++itXonk=
+github.com/ereyes01/go-auth0-grant v0.0.0-20180728073501-2846de29fbc5/go.mod h1:uWbSFOVjmqq+nTPljFrCvAJrYkxojWAkZAox5xV7VkE=
+github.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=
+github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
